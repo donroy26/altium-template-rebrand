@@ -8,7 +8,7 @@ FILL: folder holding the new `.SchDot` files, or "Workspace-managed" and the tem
 
 ## New template per sheet size
 
-| Size | New template file |
+| Size (as the tool reports it) | New template file |
 |---|---|
 | A4 | FILL |
 | A3 | FILL |
@@ -17,7 +17,7 @@ FILL: folder holding the new `.SchDot` files, or "Workspace-managed" and the tem
 | B | FILL |
 | C | FILL |
 
-Add rows for any other size you use. A size with no row here is flagged by stage 02.
+Add a row per new template. The size is the string `sch_inventory.py` reports for that template (for example `A3` or `custom 1100x850`); the setup step fills it by running the tool on each new template, not by hand. A sheet whose size has no row here is flagged by stage 02.
 
 ## Old-branding template files
 

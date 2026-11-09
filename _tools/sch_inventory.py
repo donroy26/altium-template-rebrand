@@ -62,8 +62,11 @@ def summarize(recs, sheet):
         if kind == "31":
             style = r.get("SHEETSTYLE", "0")
             out["size"] = SIZES[int(style)] if style.isdigit() and int(style) < len(SIZES) else "style %s" % style
+            # CUSTOMX/Y are always present (defaults), so trust them only with USECUSTOMSHEET=T. Then SHEETSTYLE
+            # is stale (real template sheets say B or A4 for an 11x8.5 in sheet): the size is the custom one.
             if r.get("USECUSTOMSHEET") == "T":
                 out["custom_size"] = "%sx%s" % (r.get("CUSTOMX", "?"), r.get("CUSTOMY", "?"))  # 1/100 inch
+                out["size"] = "custom " + out["custom_size"]
             out["template"] = r.get("TEMPLATEFILENAME", "")
             out["titleblock_on"] = r.get("TITLEBLOCKON") == "T"  # built-in title block
         elif kind == "39":
@@ -134,9 +137,8 @@ def table(rows):
         if "error" in r:
             lines.append("| %s | ERROR | %s | | | |" % (r["sheet"], r["error"]))
         else:
-            size = r["size"] + (" (custom %s)" % r["custom_size"] if r["custom_size"] else "")
             lines.append("| %s | %s | %s | %d | %s | %s |" % (
-                r["sheet"], size, r["template"] or "(none)", len(r["parameters"]),
+                r["sheet"], r["size"], r["template"] or "(none)", len(r["parameters"]),
                 "yes" if r["has_template_record"] else "no", "on" if r["titleblock_on"] else "off"))
     return "\n".join(lines)
 
@@ -170,7 +172,7 @@ def selftest():
         rec("|RECORD=4|TEXT==DocumentName"),
     ])
     r = summarize(parse_records(data), "a.SchDoc")
-    assert r["size"] == "A3" and r["custom_size"] == "1500x950", r
+    assert r["size"] == "custom 1500x950" and r["custom_size"] == "1500x950", r  # SHEETSTYLE=1 is stale when custom
     assert r["template"] == "C:\\t\\Old.SchDot" and r["template_record"] == "C:\\t\\Old.SchDot", r
     assert r["parameters"] == {"Title": "Board", "Rev": "A\u00b5"}, r["parameters"]  # component param skipped
     assert r["special_strings"] == ["=DocumentName"], r["special_strings"]
@@ -180,6 +182,17 @@ def selftest():
     assert r["size"] == "style 99" and r["template"] == "X.SchDot", r
     r = summarize(parse_records(rec("|RECORD=31|SHEETSTYLE=0")), "c")
     assert not r["has_template_record"] and not r["titleblock_on"] and r["size"] == "A4", r
+    # real-file shapes (seen in 95 real sheets): mixed-case keys, SHEETSTYLE absent = A4, CUSTOMX present
+    # without USECUSTOMSHEET is only a default, sheet parameters carry no OWNERINDEX, and the %UTF8% copy
+    # is UTF-8 while the plain copy is cp1252
+    def frame(b):
+        return struct.pack("<H", len(b)) + b"\x00\x00" + b
+    r = summarize(parse_records(frame(b"|HEADER=x\x00")
+                                + frame(b"|RECORD=31|UseCustomSheet=T|CustomX=1100|CustomY=850|SheetStyle=6\x00")
+                                + frame(b"|RECORD=41|NAME=Rev|TEXT=\xb5|%UTF8%TEXT=\xc2\xb5\x00")), "d")
+    assert r["size"] == "custom 1100x850" and r["parameters"] == {"Rev": "\u00b5"}, r
+    r = summarize(parse_records(frame(b"|Record=31|CustomX=1500|CustomY=950\x00")), "e")
+    assert r["size"] == "A4" and r["custom_size"] == "", r
     try:
         parse_records(data[:-3])
         raise SystemExit("truncated data was accepted")
